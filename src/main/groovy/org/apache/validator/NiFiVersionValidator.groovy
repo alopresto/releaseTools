@@ -1,4 +1,4 @@
-package org.apache
+package org.apache.validator
 
 import com.beust.jcommander.IParameterValidator
 import com.beust.jcommander.ParameterException
