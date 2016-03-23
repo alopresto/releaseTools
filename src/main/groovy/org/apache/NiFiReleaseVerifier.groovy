@@ -75,10 +75,10 @@ class NiFiReleaseVerifier {
         createPath(workBasePath) && cleanPath(workBasePath)
     }
 
-    private void downloadFile(String url) {
+    private void downloadFile(String url, String targetPath = workBasePath) {
         // TODO: Enhance validation?
-        String filename = url.split("/", 2).last()
-        def destinationStream = new File(workBasePath, filename).newOutputStream()
+        String filename = url.split("/").last()
+        def destinationStream = new File(targetPath, filename).newOutputStream()
         destinationStream << new URL(url).openStream()
         destinationStream.close()
     }
@@ -103,7 +103,6 @@ class NiFiReleaseVerifier {
         releaseFiles.each { String file ->
             downloadFile(String)
         }
-
     }
 
     public static void main(String[] args) {
