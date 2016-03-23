@@ -32,7 +32,9 @@ class NiFiReleaseVerifierTest extends GroovyTestCase {
 
     @After
     void tearDown() {
-        FileUtils.cleanDirectory(DOWNLOAD_PARENT_DIR)
+        if (DOWNLOAD_PARENT_DIR.exists()) {
+            FileUtils.cleanDirectory(DOWNLOAD_PARENT_DIR)
+        }
     }
 
     @AfterClass
@@ -115,7 +117,7 @@ class NiFiReleaseVerifierTest extends GroovyTestCase {
         String targetFilename = "faq.html"
         logger.debug("Target URL: '${target}' | ${targetFilename}")
 
-
+        String parent = DOWNLOAD_PARENT_DIR_PATH
         logger.debug("Target path: ${parent}")
         File parentDir = new File(parent)
         if (!parentDir.exists()) {
@@ -144,7 +146,7 @@ class NiFiReleaseVerifierTest extends GroovyTestCase {
         String targetFilename = "faq.html"
         logger.debug("Target URL: '${target}' | ${targetFilename}")
 
-        String parent = "src/test/resources/downloads"
+        String parent = DOWNLOAD_PARENT_DIR_PATH
         logger.debug("Target path: ${parent}")
         File parentDir = new File(parent)
         if (!parentDir.exists()) {
