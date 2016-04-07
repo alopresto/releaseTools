@@ -4,9 +4,12 @@ import org.apache.commons.io.FileUtils
 import org.apache.log4j.Logger
 import org.junit.*
 import org.junit.contrib.java.lang.system.ExpectedSystemExit
+import org.junit.runner.RunWith
+import org.junit.runners.JUnit4
 
 import java.nio.file.Files
 
+@RunWith(JUnit4.class)
 class NiFiReleaseVerifierTest extends GroovyTestCase {
     private static final Logger logger = Logger.getLogger(NiFiReleaseVerifierTest.class)
 
@@ -25,12 +28,16 @@ class NiFiReleaseVerifierTest extends GroovyTestCase {
     private NiFiReleaseVerifier verifier
 
     @Rule
-    private final ExpectedSystemExit exit = ExpectedSystemExit.none()
+    public final ExpectedSystemExit exit = ExpectedSystemExit.none()
     static private final String DELETE_KEY_FINGERPRINT = "56FFB72B7C1E5A9DCFEFCFA6AD7DD2BAAC34201F"
 
     @BeforeClass
     static void setUpOnce() {
         DOWNLOAD_PARENT_DIR.deleteOnExit()
+
+        logger.metaClass.methodMissing = { String name, args ->
+            logger.info("[${name?.toUpperCase()}] ${(args as List).join(" ")}")
+        }
     }
 
     @Before
@@ -59,6 +66,7 @@ class NiFiReleaseVerifierTest extends GroovyTestCase {
         }
     }
 
+    @Ignore("Not yet implemented")
     @Test
     void testShouldExitWithNormalStatus() {
         // Arrange
@@ -267,17 +275,47 @@ class NiFiReleaseVerifierTest extends GroovyTestCase {
     }
 
     @Test
+    void testShouldFormFileFromPath() {
+        // Arrange
+        String targetPath = "plain.txt"
+        logger.info("Target path: ${targetPath}")
+        File targetFile = new File(RESOURCES_PATH, targetPath)
+        logger.info("Expected path: ${targetFile.path}")
+
+        verifier.workBasePath = RESOURCES_PATH
+        logger.info("Work base path: ${verifier.workBasePath}")
+
+        // Act
+        File formedFile = verifier.formFileFromPath(targetPath)
+        logger.info("Formed file: ${formedFile.path}")
+
+        // Assert
+        assert formedFile.path == targetFile.path
+    }
+
+    @Test
+    void testFormFileFromPathShouldDetectExistingFile() {
+        // Arrange
+        String targetPath = "plain.txt"
+        logger.info("Target path: ${targetPath}")
+        File targetFile = new File(RESOURCES_PATH, targetPath)
+        logger.info("Expected path: ${targetFile.path}")
+
+        logger.info("Work base path: ${verifier.workBasePath}")
+
+        // Act
+        File formedFile = verifier.formFileFromPath(targetFile.path)
+        logger.info("Formed file: ${formedFile.path}")
+
+        // Assert
+        assert formedFile.path == targetFile.path
+    }
+
+    @Test
     void testVerifyGPGSignatureShouldHandleSuccessfulSignatureWithDefaultSignatureFile() {
         // Arrange
-//        String parent = DOWNLOAD_PARENT_DIR_PATH
-//        logger.debug("Target path: ${parent}")
-//        File parentDir = makeDownloadDir(parent)
-
         String targetPath = "plain.txt"
         File targetFile = new File(RESOURCES_PATH, targetPath)
-//        Files.copy(targetFile.toPath(), new File(parentDir, targetPath).toPath())
-
-//        verifier.workBasePath = parent
 
         // Act
         boolean signatureVerified = verifier.verifyGPGSignature(targetFile.path)
@@ -287,12 +325,56 @@ class NiFiReleaseVerifierTest extends GroovyTestCase {
         assert signatureVerified
     }
 
-    // successful with trust warning
-    // unsuccessful
+    @Test
+    void testVerifyGPGSignatureShouldHandleSuccessfulSignatureWithTrustWarning() {
+        // Arrange
+        String targetPath = "plain.txt"
+        File targetFile = new File(RESOURCES_PATH, targetPath)
 
-    // should require target path
-    // should form target path
-    // should form target path from work path
+        String signaturePath = "good_untrusted_sig.asc"
+        File signatureFile = new File(RESOURCES_PATH, signaturePath)
+
+        // Act
+        boolean signatureVerified = verifier.verifyGPGSignature(targetFile.path, signatureFile.path)
+        logger.debug("Signature verified: ${signatureVerified}")
+
+        // Assert
+        assert signatureVerified
+    }
+
+    @Test
+    void testVerifyGPGSignatureShouldHandleUnsuccessfulSignature() {
+        // Arrange
+        String targetPath = "plain.txt"
+        File targetFile = new File(RESOURCES_PATH, targetPath)
+
+        String signaturePath = "bad_sig.asc"
+        File signatureFile = new File(RESOURCES_PATH, signaturePath)
+
+        // Act
+        boolean signatureVerified = verifier.verifyGPGSignature(targetFile.path, signatureFile.path)
+        logger.debug("Signature verified: ${signatureVerified}")
+
+        // Assert
+        assert !signatureVerified
+    }
+
+    @Test
+    void testVerifyGPGSignatureShouldRequireTargetPath() {
+        // Arrange
+        String targetPath = "plain.txt"
+        File targetFile = new File(RESOURCES_PATH, targetPath)
+
+        // Act
+        def msg = shouldFail(IllegalArgumentException) {
+            boolean signatureVerified = verifier.verifyGPGSignature(null)
+        }
+        logger.expected(msg)
+
+        // Assert
+        assert msg =~ "Target file must be specified"
+    }
+
     @Test
     void testVerifyGPGSignatureShouldFormTargetPathFromWorkPath() {
         // Arrange
@@ -319,19 +401,63 @@ class NiFiReleaseVerifierTest extends GroovyTestCase {
         // Assert
         assert signatureVerified
     }
-    // should require target file
-    // should form signature path
-    // should form signature path from work path
-    // should require signature file
+
+    @Test
+    void testVerifyGPGSignatureShouldRequireTargetFile() {
+        // Arrange
+        String targetPath = "missing.txt"
+        logger.info("Target path: ${targetPath}")
+        File targetFile = new File(RESOURCES_PATH, targetPath)
+        logger.info("Expected path: ${targetFile.path}")
+
+        verifier.workBasePath = RESOURCES_PATH
+        logger.info("Work base path: ${verifier.workBasePath}")
+
+        // Act
+        def msg = shouldFail(IllegalArgumentException) {
+            boolean signatureVerified = verifier.verifyGPGSignature(targetFile.path)
+        }
+        logger.expected(msg)
+
+        // Assert
+        assert msg == "Target file [${targetFile.path}] does not exist" as String
+    }
+
+    @Test
+    void testVerifyGPGSignatureShouldRequireSignatureFile() {
+        // Arrange
+        String targetPath = "plain.txt"
+        logger.info("Target path: ${targetPath}")
+        File targetFile = new File(RESOURCES_PATH, targetPath)
+        logger.info("Expected path: ${targetFile.path}")
+
+        String signaturePath = "missing.txt.asc"
+        File signatureFile = new File(RESOURCES_PATH, signaturePath)
+
+        verifier.workBasePath = RESOURCES_PATH
+        logger.info("Work base path: ${verifier.workBasePath}")
+
+        // Act
+        def msg = shouldFail(IllegalArgumentException) {
+            boolean signatureVerified = verifier.verifyGPGSignature(targetFile.path, signaturePath)
+        }
+        logger.expected(msg)
+
+        // Assert
+        assert msg == "Signature file [${signatureFile.path}] does not exist" as String
+    }
 
     private static void removeTestKey() {
         // Specifies the fingerprint of the test key from the resource file to delete
-        def proc = ("gpg --batch --delete-keys " + DELETE_KEY_FINGERPRINT).execute()
-        def outputStream = new StringBuffer();
-        def errorStream = new StringBuffer();
-        proc.waitForProcessOutput(outputStream, errorStream)
-        def errorLines = errorStream.readLines()
-        logger.info(errorLines.join("\n"))
+        def deleteCommandPrefixes = ["gpg --batch --delete-secret-keys ", "gpg --batch --delete-keys "]
+        deleteCommandPrefixes.each { String cmd ->
+            def proc = (cmd + DELETE_KEY_FINGERPRINT).execute()
+            def outputStream = new StringBuffer();
+            def errorStream = new StringBuffer();
+            proc.waitForProcessOutput(outputStream, errorStream)
+            def errorLines = errorStream.readLines()
+            logger.info(errorLines.join("\n"))
+        }
     }
 
     private static File makeDownloadDir(String parent) {

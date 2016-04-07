@@ -55,6 +55,7 @@ class NiFiReleaseVerifier {
         }
 
         // TODO: Replace with BC GPG code?
+        // TODO: Sanitize paths before using in system call
         final String GPG_VERIFY_CMD = "gpg --verify ${signatureFile.path} ${targetFile.path}"
         logger.debug("GPG verify command: ${GPG_VERIFY_CMD}")
 
@@ -73,12 +74,12 @@ class NiFiReleaseVerifier {
         return proc.exitValue() == 0
     }
 
-    boolean containsTrustWarning(List<String> strings) {
+    private static boolean containsTrustWarning(List<String> strings) {
         strings.any { it =~ "WARNING: This key is not certified with a trusted signature" }
     }
 
     public File formFileFromPath(String targetPath) {
-        new File(targetPath).exists() ? new File(targetPath) : new File(workBasePath, targetPath)
+        new File(targetPath).exists() || targetPath.startsWith(workBasePath) ? new File(targetPath) : new File(workBasePath, targetPath)
     }
 
     private boolean verifyChecksum(String artifact, String checksum, String algorithm = MessageDigestAlgorithm.SHA1) {
@@ -122,8 +123,12 @@ class NiFiReleaseVerifier {
         }
     }
 
-    private void setupWorkPath() {
-        createPath(workBasePath) && cleanPath(workBasePath)
+    private boolean setupWorkPath() {
+        boolean created = createPath(workBasePath)
+        boolean cleaned = cleanPath(workBasePath)
+        logger.debug("Created path: ${workBasePath} ${created}")
+        logger.debug("Cleaned path: ${workBasePath} ${cleaned}")
+        created && cleaned
     }
 
     private File downloadFile(String url, String targetPath = workBasePath) {
@@ -178,6 +183,7 @@ class NiFiReleaseVerifier {
 
     protected int importSigningKeys() {
         // TODO: Replace with BC GPG code?
+        // TODO: Sanitize paths before using in system call
         final String GPG_IMPORT_CMD = "gpg --import ${generatePath(KEYS_PATH)}"
         logger.debug("GPG import command: ${GPG_IMPORT_CMD}")
 
@@ -215,7 +221,7 @@ class NiFiReleaseVerifier {
     }
 
     protected File downloadSigningKeys() {
-        downloadFile(KEYS_URL, generatePath(KEYS_PATH))
+        downloadFile(KEYS_URL)
     }
 
     String generatePath(String s) {
@@ -240,7 +246,8 @@ class NiFiReleaseVerifier {
             System.exit(0)
         } catch (Exception e) {
             logger.error("Encountered an exception: ${e.getMessage()}")
-            System.exit(2)
+            logger.debug(e.getStackTrace().join("\n"))
+            System.exit(1)
         }
     }
 // TODO: Implement
