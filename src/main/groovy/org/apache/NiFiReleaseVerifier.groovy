@@ -205,6 +205,27 @@ class NiFiReleaseVerifier {
         verifyApacheArtifacts()
     }
 
+    protected void unzipSource() {
+        final String UNZIP_CMD = "unzip -q ${releaseArtifact} -d ${workBasePath}"
+        logger.debug("Unzip command: ${UNZIP_CMD}")
+
+        def proc = UNZIP_CMD.execute()
+        def outputStream = new StringBuffer();
+        def errorStream = new StringBuffer();
+        proc.waitForProcessOutput(outputStream, errorStream)
+
+//        def outputLines = outputStream.readLines()
+//        logger.debug(outputLines.join("\n"))
+
+        def errorLines = errorStream.readLines()
+//        logger.debug(errorLines.join("\n"))
+
+        if (proc.exitValue() != 0) {
+            logger.error(errorLines.join("\n"))
+            throw new Exception("Error unzipping source file ${releaseArtifact}")
+        }
+    }
+
     protected void verifyChecksums() {
         byte[] artifactBytes = new File(releaseArtifact).bytes
         releaseChecksums.each { String checksumPath ->

@@ -544,6 +544,66 @@ class NiFiReleaseVerifierTest extends GroovyTestCase {
         }
     }
 
+    @Test
+    void testShouldUnzipFile() {
+        // Arrange
+        String parent = DOWNLOAD_PARENT_DIR_PATH
+        logger.debug("Target path: ${parent}")
+        File parentDir = makeDownloadDir(parent)
+        File zipFile = new File(RESOURCES_PATH, "inside.zip")
+        File workDirZipFile = new File(parentDir, "inside.zip")
+        Files.copy(zipFile.toPath(), workDirZipFile.toPath())
+
+        verifier.workBasePath = parent
+        verifier.releaseArtifact = workDirZipFile.path
+
+        // Delete the unzipped directory to ensure it is not present
+        File unzippedDir = new File(parentDir, "inside")
+        unzippedDir.deleteDir()
+        logger.info("Unzipped directory exists (${unzippedDir.path}): ${unzippedDir.exists()}")
+
+        // Act
+        verifier.unzipSource()
+
+        // Assert
+        logger.info("Unzipped directory exists (${unzippedDir.path}): ${unzippedDir.exists()}")
+        assert unzippedDir.exists()
+    }
+
+    @Test
+    void testUnzipFileShouldHandleError() {
+        // Arrange
+        String parent = DOWNLOAD_PARENT_DIR_PATH
+        logger.debug("Target path: ${parent}")
+        File parentDir = makeDownloadDir(parent)
+        File zipFile = new File(RESOURCES_PATH, "inside.zip")
+        File workDirZipFile = new File(parentDir, "missing.zip")
+
+        verifier.workBasePath = parent
+        verifier.releaseArtifact = workDirZipFile.path
+
+        // Delete the unzipped directory to ensure it is not present
+        File unzippedDir = new File(parentDir, "inside")
+        unzippedDir.deleteDir()
+        logger.info("Unzipped directory exists (${unzippedDir.path}): ${unzippedDir.exists()}")
+
+        // Delete the input zip file
+        workDirZipFile.delete()
+        logger.info("Zip file exists (${workDirZipFile.path}): ${workDirZipFile.exists()}")
+
+        // Act
+        def msg = shouldFail(Exception) {
+            verifier.unzipSource()
+        }
+
+        // Assert
+        logger.info("Unzipped directory exists (${unzippedDir.path}): ${unzippedDir.exists()}")
+        assert !unzippedDir.exists()
+
+        logger.expected(msg)
+        assert msg =~ "Error unzipping source file ${workDirZipFile.path}"
+    }
+
     private static void removeTestKey() {
         // Specifies the fingerprint of the test key from the resource file to delete
         def deleteCommandPrefixes = ["gpg --batch --delete-secret-keys ", "gpg --batch --delete-keys "]
