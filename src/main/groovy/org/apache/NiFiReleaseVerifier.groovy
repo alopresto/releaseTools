@@ -29,8 +29,56 @@ class NiFiReleaseVerifier {
     // This is to allow tests to intercept the instance
     private static NiFiReleaseVerifier verifier
 
-    private boolean verifyGPGSignature() {
+    protected boolean verifyReleaseGPGSignatures() {
 
+    }
+
+    private boolean verifyGPGSignature(String targetFilePath, String signatureFilePath = "") {
+        if (!targetFilePath) {
+            throw new IllegalArgumentException("Target file must be specified")
+        }
+
+        File targetFile = formFileFromPath(targetFilePath)
+
+        if (!targetFile.exists()) {
+            throw new IllegalArgumentException("Target file [${targetFile.path}] does not exist")
+        }
+
+        if (!signatureFilePath) {
+            signatureFilePath = targetFile.path + ".asc"
+        }
+
+        File signatureFile = formFileFromPath(signatureFilePath)
+
+        if (!signatureFile.exists()) {
+            throw new IllegalArgumentException("Signature file [${signatureFile.path}] does not exist")
+        }
+
+        // TODO: Replace with BC GPG code?
+        final String GPG_VERIFY_CMD = "gpg --verify ${signatureFile.path} ${targetFile.path}"
+        logger.debug("GPG verify command: ${GPG_VERIFY_CMD}")
+
+        def proc = GPG_VERIFY_CMD.execute()
+        def outputStream = new StringBuffer();
+        def errorStream = new StringBuffer();
+        proc.waitForProcessOutput(outputStream, errorStream)
+
+        def errorLines = errorStream.readLines()
+        logger.debug(errorLines.join("\n"))
+
+        if (containsTrustWarning(errorLines)) {
+            logger.warn(errorLines.join("\n"))
+        }
+
+        return proc.exitValue() == 0
+    }
+
+    boolean containsTrustWarning(List<String> strings) {
+        strings.any { it =~ "WARNING: This key is not certified with a trusted signature" }
+    }
+
+    public File formFileFromPath(String targetPath) {
+        new File(targetPath).exists() ? new File(targetPath) : new File(workBasePath, targetPath)
     }
 
     private boolean verifyChecksum(String artifact, String checksum, String algorithm = MessageDigestAlgorithm.SHA1) {
@@ -121,7 +169,7 @@ class NiFiReleaseVerifier {
         importSigningKeys()
 
         downloadReleaseFiles()
-        verifyGPGSignature()
+        verifyReleaseGPGSignatures()
         verifySignatures()
         unzipSource()
         runContribCheck()
@@ -129,6 +177,7 @@ class NiFiReleaseVerifier {
     }
 
     protected int importSigningKeys() {
+        // TODO: Replace with BC GPG code?
         final String GPG_IMPORT_CMD = "gpg --import ${generatePath(KEYS_PATH)}"
         logger.debug("GPG import command: ${GPG_IMPORT_CMD}")
 
@@ -136,12 +185,6 @@ class NiFiReleaseVerifier {
         def outputStream = new StringBuffer();
         def errorStream = new StringBuffer();
         proc.waitForProcessOutput(outputStream, errorStream)
-
-//        assert outputStream.readLines()
-//        assert errorStream.readLines() == []
-
-//        def outputLines = outputStream.readLines()
-//        logger.info("Output stream: ${outputLines.join("\n")}")
 
         def errorLines = errorStream.readLines()
         logger.debug(errorLines.join("\n"))

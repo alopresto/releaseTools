@@ -266,6 +266,64 @@ class NiFiReleaseVerifierTest extends GroovyTestCase {
         assert modifiedKeysCount == 0
     }
 
+    @Test
+    void testVerifyGPGSignatureShouldHandleSuccessfulSignatureWithDefaultSignatureFile() {
+        // Arrange
+//        String parent = DOWNLOAD_PARENT_DIR_PATH
+//        logger.debug("Target path: ${parent}")
+//        File parentDir = makeDownloadDir(parent)
+
+        String targetPath = "plain.txt"
+        File targetFile = new File(RESOURCES_PATH, targetPath)
+//        Files.copy(targetFile.toPath(), new File(parentDir, targetPath).toPath())
+
+//        verifier.workBasePath = parent
+
+        // Act
+        boolean signatureVerified = verifier.verifyGPGSignature(targetFile.path)
+        logger.debug("Signature verified: ${signatureVerified}")
+
+        // Assert
+        assert signatureVerified
+    }
+
+    // successful with trust warning
+    // unsuccessful
+
+    // should require target path
+    // should form target path
+    // should form target path from work path
+    @Test
+    void testVerifyGPGSignatureShouldFormTargetPathFromWorkPath() {
+        // Arrange
+        String parent = DOWNLOAD_PARENT_DIR_PATH
+        logger.debug("Target path: ${parent}")
+        File parentDir = makeDownloadDir(parent)
+
+        String targetPath = "plain.txt"
+        File targetFile = new File(RESOURCES_PATH, targetPath)
+        File downloadedTargetFile = new File(parentDir, targetPath)
+        Files.copy(targetFile.toPath(), downloadedTargetFile.toPath())
+
+        String signaturePath = "plain.txt.asc"
+        File signatureFile = new File(RESOURCES_PATH, signaturePath)
+        File downloadedSignatureFile = new File(parentDir, signaturePath)
+        Files.copy(signatureFile.toPath(), downloadedSignatureFile.toPath())
+
+        verifier.workBasePath = parent
+
+        // Act
+        boolean signatureVerified = verifier.verifyGPGSignature(targetPath)
+        logger.debug("Signature verified: ${signatureVerified}")
+
+        // Assert
+        assert signatureVerified
+    }
+    // should require target file
+    // should form signature path
+    // should form signature path from work path
+    // should require signature file
+
     private static void removeTestKey() {
         // Specifies the fingerprint of the test key from the resource file to delete
         def proc = ("gpg --batch --delete-keys " + DELETE_KEY_FINGERPRINT).execute()
