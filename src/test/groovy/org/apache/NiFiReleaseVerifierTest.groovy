@@ -2,12 +2,14 @@ package org.apache
 
 import org.apache.commons.io.FileUtils
 import org.apache.log4j.Logger
+import org.bouncycastle.jce.provider.BouncyCastleProvider
 import org.junit.*
 import org.junit.contrib.java.lang.system.ExpectedSystemExit
 import org.junit.runner.RunWith
 import org.junit.runners.JUnit4
 
 import java.nio.file.Files
+import java.security.Security
 
 @RunWith(JUnit4.class)
 class NiFiReleaseVerifierTest extends GroovyTestCase {
@@ -38,6 +40,8 @@ class NiFiReleaseVerifierTest extends GroovyTestCase {
         logger.metaClass.methodMissing = { String name, args ->
             logger.info("[${name?.toUpperCase()}] ${(args as List).join(" ")}")
         }
+
+        Security.addProvider(new BouncyCastleProvider())
     }
 
     @Before
@@ -137,6 +141,27 @@ class NiFiReleaseVerifierTest extends GroovyTestCase {
     }
 
     @Test
+    void testShouldPopulateReleaseFiles() {
+        // Arrange
+        String version = "0.6.1"
+        logger.info("Version: ${version}")
+
+        String mainFileName = "nifi-${version}-source-release.zip"
+        logger.info("Source file: ${mainFileName}")
+
+        final String EXPECTED_SOURCE_URL = "https://dist.apache.org/repos/dist/dev/nifi/nifi-${version}/nifi-${version}-source-release.zip"
+
+        final List<String> EXPECTED_URLS = ["", ".asc", ".md5", ".sha1", ".sha256"].collect { EXPECTED_SOURCE_URL + it }
+
+        // Act
+        def releaseUrls = verifier.populateReleaseFiles(version)
+        logger.info("Release URLs: ${releaseUrls.join("\n")}")
+
+        // Assert
+        assert releaseUrls.sort() == EXPECTED_URLS.sort()
+    }
+
+    @Test
     void testShouldDownloadFile() {
         // Arrange
         String target = "https://nifi.apache.org/faq.html"
@@ -228,6 +253,33 @@ class NiFiReleaseVerifierTest extends GroovyTestCase {
 
         // Assert
         assert generatedPath == [DOWNLOAD_PARENT_DIR_PATH, targetFilename].join("/")
+    }
+
+    @Test
+    void testShouldDownloadReleaseFiles() {
+        // Arrange
+        String target = "https://nifi.apache.org/faq.html"
+        String targetFilename = "faq.html"
+        logger.debug("Target URL: '${target}' | ${targetFilename}")
+
+        String parent = DOWNLOAD_PARENT_DIR_PATH
+        logger.debug("Target path: ${parent}")
+        File parentDir = makeDownloadDir(parent)
+
+        verifier.workBasePath = parentDir.path
+
+        // Act
+        verifier.downloadReleaseFiles([target])
+
+        // Assert
+        assert parentDir.exists()
+        assert parentDir.isDirectory()
+
+        File targetFile = new File(parent, targetFilename)
+        assert targetFile.exists()
+        assert parentDir.listFiles().contains(targetFile)
+
+        logger.debug("Read file: ${targetFile.text[0..<50]}...")
     }
 
     @Test
@@ -445,6 +497,51 @@ class NiFiReleaseVerifierTest extends GroovyTestCase {
 
         // Assert
         assert msg == "Signature file [${signatureFile.path}] does not exist" as String
+    }
+
+    @Test
+    void testVerifyChecksumShouldHandleSuccessfulChecksum() {
+        // Arrange
+        String targetPath = "plain.txt"
+        File targetFile = new File(RESOURCES_PATH, targetPath)
+
+        ["md5", "sha1", "sha256"].each { String algorithm ->
+            String checksumPath = "${targetPath}.${algorithm}"
+            File checksumFile = new File(RESOURCES_PATH, checksumPath)
+            String checksum = checksumFile.text
+            MessageDigestAlgorithm mda = MessageDigestAlgorithm.getInstance(algorithm)
+            logger.info("Expected checksum (${mda.name()}): ${checksum}")
+
+            // Act
+            boolean checksumVerified = verifier.verifyChecksum(targetFile.bytes, checksum, mda.name())
+            logger.info("Checksum verified: ${checksumVerified}")
+
+            // Assert
+            assert checksumVerified
+        }
+    }
+
+    @Test
+    void testVerifyChecksumShouldHandleUnsuccessfulChecksum() {
+        // Arrange
+        String targetPath = "plain.txt"
+        File targetFile = new File(RESOURCES_PATH, targetPath)
+
+        ["md5", "sha1", "sha256"].each { String algorithm ->
+            String checksumPath = "${targetPath}.${algorithm}"
+            File checksumFile = new File(RESOURCES_PATH, checksumPath)
+            String checksum = checksumFile.text
+            MessageDigestAlgorithm mda = MessageDigestAlgorithm.getInstance(algorithm)
+            logger.info("Expected checksum (${mda.name()}): ${checksum}")
+
+            // Act
+            byte[] incorrectArtifactBytes = (targetFile.bytes as List<Byte>).reverse()
+            boolean checksumVerified = verifier.verifyChecksum(incorrectArtifactBytes, checksum, mda.name())
+            logger.info("Checksum verified: ${checksumVerified}")
+
+            // Assert
+            assert !checksumVerified
+        }
     }
 
     private static void removeTestKey() {

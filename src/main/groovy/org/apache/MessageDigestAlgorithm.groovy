@@ -11,4 +11,8 @@ public enum MessageDigestAlgorithm {
     public MessageDigestAlgorithm(String algorithm) {
         this.algorithm = algorithm
     }
+
+    public static MessageDigestAlgorithm getInstance(String algorithm) {
+        values().find { it.name().replaceAll(/[^\w+]/, "") == algorithm?.toUpperCase() }
+    }
 }

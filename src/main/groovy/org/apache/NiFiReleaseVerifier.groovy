@@ -6,6 +6,9 @@ import org.apache.commons.io.FileUtils
 import org.apache.log4j.Logger
 import org.apache.validator.NiFiVersionValidator
 import org.apache.validator.PathValidator
+import org.bouncycastle.util.encoders.Hex
+
+import java.security.MessageDigest
 
 class NiFiReleaseVerifier {
 
@@ -20,6 +23,10 @@ class NiFiReleaseVerifier {
     @Parameter(names = ["--path", "-p"], description = "Base path to work (e.g. ~/scratch, will be created if it does not exist)", validateWith = PathValidator.class)
     private String workBasePath = "~/Workspace/scratch/release_verification"
 
+    private String releaseArtifact
+    private String releaseSignature
+    private List<String> releaseChecksums = []
+
     private static final String BASE_URL = "https://dist.apache.org/repos/dist/dev/nifi/nifi-"
     private static final List<String> DEFAULT_SIGNATURE_EXTENSIONS = ["asc", "md5", "sha1", "sha256"]
 
@@ -30,7 +37,17 @@ class NiFiReleaseVerifier {
     private static NiFiReleaseVerifier verifier
 
     protected boolean verifyReleaseGPGSignatures() {
+        // TODO: Redundant check?
+        // Ensure signature file present
+        boolean signatureFilePresent = formFileFromPath(releaseSignature).exists()
 
+        // Verify signature
+        final boolean signatureVerified = verifyGPGSignature(releaseArtifact, releaseSignature)
+        if (!signatureFilePresent || !signatureVerified) {
+            logger.error("Signature file present: ${releaseSignature} ${signatureFilePresent}")
+            logger.error("Signature verified: ${signatureVerified}")
+            throw new Exception("Could not verify GPG signature for release artifact")
+        }
     }
 
     private boolean verifyGPGSignature(String targetFilePath, String signatureFilePath = "") {
@@ -82,8 +99,12 @@ class NiFiReleaseVerifier {
         new File(targetPath).exists() || targetPath.startsWith(workBasePath) ? new File(targetPath) : new File(workBasePath, targetPath)
     }
 
-    private boolean verifyChecksum(String artifact, String checksum, String algorithm = MessageDigestAlgorithm.SHA1) {
-
+    private
+    static boolean verifyChecksum(byte[] content, String checksum, String algorithm = MessageDigestAlgorithm.SHA1) {
+        MessageDigest md = MessageDigest.getInstance(algorithm)
+        byte[] calculatedChecksum = md.digest(content)
+        logger.debug("Calculated checksum (${algorithm}): ${Hex.toHexString(calculatedChecksum)}")
+        MessageDigest.isEqual(calculatedChecksum, Hex.decode(checksum))
     }
 
     private boolean verifyContribCheck() {
@@ -143,12 +164,10 @@ class NiFiReleaseVerifier {
         file
     }
 
-    protected List<String> populateReleaseFiles(String version) {
-//        RELEASE_FILES.collect { String fileEnding ->
-//            SIGNATURE_EXTENSIONS.collect { String extension ->
-//                "${BASE_URL}${version}/nifi-${version}${fileEnding}${extension ? ".${extension}" : ""}"
-//            }
-//        }.flatten()
+    protected static List<String> populateReleaseFiles(String version) {
+        final String fileEnding = "source-release.zip"
+        final String sourceFileUrl = "${BASE_URL}${version}/nifi-${version}-${fileEnding}"
+        generateSignatureFiles(sourceFileUrl) + sourceFileUrl
     }
 
     protected
@@ -158,11 +177,13 @@ class NiFiReleaseVerifier {
         }
     }
 
-    public void downloadReleaseFiles() {
-        List<String> releaseFiles = populateReleaseFiles(version)
+    public List<String> downloadReleaseFiles(List<String> releaseFiles) {
         releaseFiles.each { String file ->
-            downloadFile(String)
+            downloadFile(file)
         }
+
+        // Translate the URL into the downloaded file name
+        releaseFiles.collect { it.tokenize("/").last() }
     }
 
     public void verifyRelease() {
@@ -173,12 +194,33 @@ class NiFiReleaseVerifier {
         downloadSigningKeys()
         importSigningKeys()
 
-        downloadReleaseFiles()
+        List<String> releaseUrls = populateReleaseFiles(version)
+        List<String> releaseFiles = downloadReleaseFiles(releaseUrls)
+        assignReleaseFiles(releaseFiles)
+
         verifyReleaseGPGSignatures()
-        verifySignatures()
+        verifyChecksums()
         unzipSource()
         runContribCheck()
         verifyApacheArtifacts()
+    }
+
+    protected void verifyChecksums() {
+        byte[] artifactBytes = new File(releaseArtifact).bytes
+        releaseChecksums.each { String checksumPath ->
+            File checksumFile = formFileFromPath(checksumPath)
+            String checksum = checksumFile.text
+            MessageDigestAlgorithm checksumAlgorithm = MessageDigestAlgorithm.getInstance(checksumPath.split(".").last())
+            verifyChecksum(artifactBytes, checksum, checksumAlgorithm.name())
+        }
+    }
+
+    private void assignReleaseFiles(List<String> releaseFiles) {
+// Split the files into the correct holders
+        releaseArtifact = releaseFiles.find { it.endsWith(".zip") }
+        releaseSignature = releaseFiles.find { it.endsWith(".asc") }
+        releaseFiles.removeAll([releaseArtifact, releaseSignature])
+        releaseChecksums = releaseFiles
     }
 
     protected int importSigningKeys() {
