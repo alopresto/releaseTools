@@ -17,11 +17,14 @@ class NiFiReleaseVerifier {
     @Parameter(names = ["--verbose", "-v"], description = "Enables verbose output (default false)", required = false, arity = 0)
     private boolean verbose = false
 
-    @Parameter(names = ["--path", "-p"], description = "Base path to work (e.g. ~/scratch, will be created if it does not exist)", required = true, validateWith = PathValidator.class)
+    @Parameter(names = ["--path", "-p"], description = "Base path to work (e.g. ~/scratch, will be created if it does not exist)", validateWith = PathValidator.class)
     private String workBasePath = "~/Workspace/scratch/release_verification"
 
     private static final String BASE_URL = "https://dist.apache.org/repos/dist/dev/nifi/nifi-"
     private static final List<String> DEFAULT_SIGNATURE_EXTENSIONS = ["asc", "md5", "sha1", "sha256"]
+
+    private static final String KEYS_URL = "https://dist.apache.org/repos/dist/dev/nifi/KEYS"
+    private static final String KEYS_PATH = "KEYS"
 
     // This is to allow tests to intercept the instance
     private static NiFiReleaseVerifier verifier
@@ -75,12 +78,16 @@ class NiFiReleaseVerifier {
         createPath(workBasePath) && cleanPath(workBasePath)
     }
 
-    private void downloadFile(String url, String targetPath = workBasePath) {
+    private File downloadFile(String url, String targetPath = workBasePath) {
         // TODO: Enhance validation?
         String filename = url.split("/").last()
-        def destinationStream = new File(targetPath, filename).newOutputStream()
+
+        File file = new File(targetPath, filename)
+        OutputStream destinationStream = file.newOutputStream()
         destinationStream << new URL(url).openStream()
         destinationStream.close()
+
+        file
     }
 
     protected List<String> populateReleaseFiles(String version) {
@@ -105,6 +112,77 @@ class NiFiReleaseVerifier {
         }
     }
 
+    public void verifyRelease() {
+        if (!setupWorkPath()) {
+            throw new Exception("Unable to setup the work base path: ${workBasePath}")
+        }
+
+        downloadSigningKeys()
+        importSigningKeys()
+
+        downloadReleaseFiles()
+        verifyGPGSignature()
+        verifySignatures()
+        unzipSource()
+        runContribCheck()
+        verifyApacheArtifacts()
+    }
+
+    protected int importSigningKeys() {
+        final String GPG_IMPORT_CMD = "gpg --import ${generatePath(KEYS_PATH)}"
+        logger.debug("GPG import command: ${GPG_IMPORT_CMD}")
+
+        def proc = GPG_IMPORT_CMD.execute()
+        def outputStream = new StringBuffer();
+        def errorStream = new StringBuffer();
+        proc.waitForProcessOutput(outputStream, errorStream)
+
+//        assert outputStream.readLines()
+//        assert errorStream.readLines() == []
+
+//        def outputLines = outputStream.readLines()
+//        logger.info("Output stream: ${outputLines.join("\n")}")
+
+        def errorLines = errorStream.readLines()
+        logger.debug(errorLines.join("\n"))
+
+        def keyCounts = parseProcessedKeysCount(errorLines)
+        logger.info("Key counts: ${keyCounts}")
+
+        keyCounts["imported"] ?: 0
+    }
+
+    protected static Map<String, Integer> parseProcessedKeysCount(List<String> output) {
+        def patterns = [processed: /gpg: Total number processed: (\d+)/, imported: /gpg:\s+imported: (\d+).*/, unchanged: /gpg:\s+unchanged: (\d+)/]
+        def matcher
+        Map<String, Integer> keyCounts = [:]
+
+        output = output.findAll { it != ~/^gpg: key/ }
+
+        patterns.each { String name, String pattern ->
+            output.find { String line ->
+                matcher = line =~ pattern
+                if (matcher.matches()) {
+                    keyCounts += [(name): Integer.parseInt(matcher.group(1))]
+                    return true
+                }
+            }
+        }
+        keyCounts
+    }
+
+    protected File downloadSigningKeys() {
+        downloadFile(KEYS_URL, generatePath(KEYS_PATH))
+    }
+
+    String generatePath(String s) {
+        if (s?.startsWith(workBasePath)) {
+            return s
+        } else {
+            return new File(workBasePath, s).getPath()
+        }
+    }
+
     public static void main(String[] args) {
         if (!verifier) {
             verifier = new NiFiReleaseVerifier()
@@ -113,14 +191,9 @@ class NiFiReleaseVerifier {
         try {
             verifier.parseCommandLineArgs(args)
 
-            if (!verifier.setupWorkPath()) {
-                logger.error("Unable to setup the work base path: ${verifier.workBasePath}")
-                System.exit(3)
-            }
+            verifier.verifyRelease()
 
-            verifier.downloadReleaseFiles()
-
-            logger.info("Returned to main")
+//            logger.info("Returned to main")
             System.exit(0)
         } catch (Exception e) {
             logger.error("Encountered an exception: ${e.getMessage()}")

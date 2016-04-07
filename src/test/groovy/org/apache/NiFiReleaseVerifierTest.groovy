@@ -5,20 +5,28 @@ import org.apache.log4j.Logger
 import org.junit.*
 import org.junit.contrib.java.lang.system.ExpectedSystemExit
 
+import java.nio.file.Files
+
 class NiFiReleaseVerifierTest extends GroovyTestCase {
     private static final Logger logger = Logger.getLogger(NiFiReleaseVerifierTest.class)
 
     private static final String RELEASE_LONG_OPT = "--release"
+    private static final String PATH_LONG_OPT = "--path"
 
     private static final List<String> SIGNATURE_EXTENSIONS = ["asc", "md5", "sha1", "sha256"]
 
-    private static final String DOWNLOAD_PARENT_DIR_PATH = "src/test/resources/downloads"
+    private static final String RESOURCES_PATH = "src/test/resources"
+    private static final String DOWNLOAD_PARENT_DIR_PATH = "${RESOURCES_PATH}/downloads"
     private static final File DOWNLOAD_PARENT_DIR = new File(DOWNLOAD_PARENT_DIR_PATH)
+
+    private static final String WORK_DIR_PATH = "${RESOURCES_PATH}/work"
+    private static final File WORK_DIR = new File(WORK_DIR_PATH)
 
     private NiFiReleaseVerifier verifier
 
     @Rule
-    private final ExpectedSystemExit exit = ExpectedSystemExit.none();
+    private final ExpectedSystemExit exit = ExpectedSystemExit.none()
+    static private final String DELETE_KEY_FINGERPRINT = "56FFB72B7C1E5A9DCFEFCFA6AD7DD2BAAC34201F"
 
     @BeforeClass
     static void setUpOnce() {
@@ -28,6 +36,7 @@ class NiFiReleaseVerifierTest extends GroovyTestCase {
     @Before
     void setUp() {
         verifier = new NiFiReleaseVerifier()
+        makeDownloadDir(DOWNLOAD_PARENT_DIR_PATH)
     }
 
     @After
@@ -43,6 +52,11 @@ class NiFiReleaseVerifierTest extends GroovyTestCase {
             FileUtils.cleanDirectory(DOWNLOAD_PARENT_DIR)
             DOWNLOAD_PARENT_DIR.delete()
         }
+
+        if (WORK_DIR?.exists()) {
+            FileUtils.cleanDirectory(WORK_DIR)
+            WORK_DIR.delete()
+        }
     }
 
     @Test
@@ -52,7 +66,11 @@ class NiFiReleaseVerifierTest extends GroovyTestCase {
 
         String release = "0.6.0"
         logger.debug("Release version: '${release}'")
-        def args = [RELEASE_LONG_OPT, release] as String[]
+
+        String path = WORK_DIR_PATH
+        logger.debug("Work path: '${path}'")
+
+        def args = [RELEASE_LONG_OPT, release, PATH_LONG_OPT, path] as String[]
 
         // Act
         NiFiReleaseVerifier.main(args)
@@ -119,11 +137,7 @@ class NiFiReleaseVerifierTest extends GroovyTestCase {
 
         String parent = DOWNLOAD_PARENT_DIR_PATH
         logger.debug("Target path: ${parent}")
-        File parentDir = new File(parent)
-        if (!parentDir.exists()) {
-            parentDir.mkdirs()
-        }
-        parentDir.deleteOnExit()
+        File parentDir = makeDownloadDir(parent)
 
         // Act
         verifier.downloadFile(target, parent)
@@ -148,11 +162,7 @@ class NiFiReleaseVerifierTest extends GroovyTestCase {
 
         String parent = DOWNLOAD_PARENT_DIR_PATH
         logger.debug("Target path: ${parent}")
-        File parentDir = new File(parent)
-        if (!parentDir.exists()) {
-            parentDir.mkdirs()
-        }
-        parentDir.deleteOnExit()
+        File parentDir = makeDownloadDir(parent)
 
         verifier.workBasePath = parent
 
@@ -168,5 +178,110 @@ class NiFiReleaseVerifierTest extends GroovyTestCase {
         assert parentDir.listFiles().contains(targetFile)
 
         logger.debug("Read file: ${targetFile.text[0..<50]}...")
+    }
+
+    @Test
+    void testShouldGeneratePathInWorkBasePath() {
+        // Arrange
+        String targetFilename = "faq.html"
+        logger.debug("File name: ${targetFilename}")
+
+        String parent = DOWNLOAD_PARENT_DIR_PATH
+        logger.debug("Target path: ${parent}")
+        File parentDir = makeDownloadDir(parent)
+
+        verifier.workBasePath = parent
+
+        // Act
+        String generatedPath = verifier.generatePath(targetFilename)
+        logger.debug("Generated path: ${generatedPath}")
+
+        // Assert
+        assert generatedPath == [DOWNLOAD_PARENT_DIR_PATH, targetFilename].join("/")
+    }
+
+    @Test
+    void testShouldGeneratePathIfWorkBasePathAlreadyPresent() {
+        // Arrange
+        String targetFilename = "faq.html"
+        logger.debug("File name: ${targetFilename}")
+        String completePath = "${DOWNLOAD_PARENT_DIR_PATH}/${targetFilename}"
+        logger.debug("Complete path: ${completePath}")
+
+        String parent = DOWNLOAD_PARENT_DIR_PATH
+        logger.debug("Target path: ${parent}")
+        File parentDir = makeDownloadDir(parent)
+
+        verifier.workBasePath = parent
+
+        // Act
+        String generatedPath = verifier.generatePath(completePath)
+        logger.debug("Generated path: ${generatedPath}")
+
+        // Assert
+        assert generatedPath == [DOWNLOAD_PARENT_DIR_PATH, targetFilename].join("/")
+    }
+
+    @Test
+    void testImportGPGKeysShouldHandleNewKey() {
+        // Arrange
+        String parent = DOWNLOAD_PARENT_DIR_PATH
+        logger.debug("Target path: ${parent}")
+        File parentDir = makeDownloadDir(parent)
+        File keys = new File(RESOURCES_PATH, "KEYS")
+        Files.copy(keys.toPath(), new File(parentDir, "KEYS").toPath())
+
+        verifier.workBasePath = parent
+
+        // Delete the "delete" key to ensure it is not present in the keyring
+        removeTestKey()
+
+        // Act
+        int modifiedKeysCount = verifier.importSigningKeys()
+        logger.debug("Modified keys count: ${modifiedKeysCount}")
+
+        // Assert
+        assert modifiedKeysCount == 1
+    }
+
+    @Test
+    void testImportGPGKeysShouldHandleNoNewKeys() {
+        // Arrange
+        String parent = DOWNLOAD_PARENT_DIR_PATH
+        logger.debug("Target path: ${parent}")
+        File parentDir = makeDownloadDir(parent)
+        File keys = new File(RESOURCES_PATH, "KEYS")
+        Files.copy(keys.toPath(), new File(parentDir, "KEYS").toPath())
+
+        verifier.workBasePath = parent
+
+        // Import all keys to ensure keyring contains both
+        verifier.importSigningKeys()
+
+        // Act
+        int modifiedKeysCount = verifier.importSigningKeys()
+        logger.debug("Modified keys count: ${modifiedKeysCount}")
+
+        // Assert
+        assert modifiedKeysCount == 0
+    }
+
+    private static void removeTestKey() {
+        // Specifies the fingerprint of the test key from the resource file to delete
+        def proc = ("gpg --batch --delete-keys " + DELETE_KEY_FINGERPRINT).execute()
+        def outputStream = new StringBuffer();
+        def errorStream = new StringBuffer();
+        proc.waitForProcessOutput(outputStream, errorStream)
+        def errorLines = errorStream.readLines()
+        logger.info(errorLines.join("\n"))
+    }
+
+    private static File makeDownloadDir(String parent) {
+        File parentDir = new File(parent)
+        if (!parentDir.exists()) {
+            parentDir.mkdirs()
+        }
+        parentDir.deleteOnExit()
+        parentDir
     }
 }
