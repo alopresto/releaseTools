@@ -207,17 +207,17 @@ class NiFiReleaseVerifier {
             }
 
             final String text = file.text
-            logger.debug("Content (${file.name}): ${text}")
+//            logger.debug("Content (${file.name}): ${text}")
             def containsLines = representativeStrings.collect { String line ->
                 boolean contains = text.contains(line)
-                logger.debug("Testing (${file.name}) for \"${line}\": ${contains}")
+//                logger.debug("Testing (${file.name}) for \"${line}\": ${contains}")
                 contains
             }
-            logger.debug("Contains lines: ${containsLines}")
+//            logger.debug("Contains lines: ${containsLines}")
 
             [filePath, containsLines]
         }
-        logger.debug("Each file: ${eachFile}")
+//        logger.debug("Each file: ${eachFile}")
 
         eachFile.every { fp, contains -> contains.every() }
     }

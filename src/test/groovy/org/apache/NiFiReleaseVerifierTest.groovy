@@ -660,6 +660,20 @@ class NiFiReleaseVerifierTest extends GroovyTestCase {
     }
 
     @Test
+    void testVerifyApacheArtifactsShouldHandleActualArtifacts() {
+        // Arrange
+        def expectedFileAndWords = verifier.generateRepresentativeStrings()
+        logger.info("Files and expected words: ${expectedFileAndWords}")
+
+        // Act
+        boolean existsAndContainsWords = verifier.verifyApacheArtifacts(RESOURCES_PATH, expectedFileAndWords)
+
+        // Assert
+        logger.info("Exists and contains words: ${existsAndContainsWords}")
+        assert existsAndContainsWords
+    }
+
+    @Test
     void testVerifyApacheArtifactsShouldHandleMissingFile() {
         // Arrange
         File plainFile = new File(RESOURCES_PATH, "missing.txt")
