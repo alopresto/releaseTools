@@ -19,11 +19,11 @@ These steps are adapted from the release verification helper emails accompanying
 
 1. Pull down nifi-0.6.1 source release artifacts for review:
 
-* `wget https://dist.apache.org/repos/dist/dev/nifi/nifi-0.6.1/nifi-0.6.1-source-release.zip`
-* `wget https://dist.apache.org/repos/dist/dev/nifi/nifi-0.6.1/nifi-0.6.1-source-release.zip.asc`
-* `wget https://dist.apache.org/repos/dist/dev/nifi/nifi-0.6.1/nifi-0.6.1-source-release.zip.md5`
-* `wget https://dist.apache.org/repos/dist/dev/nifi/nifi-0.6.1/nifi-0.6.1-source-release.zip.sha1`
-* `wget https://dist.apache.org/repos/dist/dev/nifi/nifi-0.6.1/nifi-0.6.1-source-release.zip.sha256`
+  * `wget https://dist.apache.org/repos/dist/dev/nifi/nifi-0.6.1/nifi-0.6.1-source-release.zip`
+  * `wget https://dist.apache.org/repos/dist/dev/nifi/nifi-0.6.1/nifi-0.6.1-source-release.zip.asc`
+  * `wget https://dist.apache.org/repos/dist/dev/nifi/nifi-0.6.1/nifi-0.6.1-source-release.zip.md5`
+  * `wget https://dist.apache.org/repos/dist/dev/nifi/nifi-0.6.1/nifi-0.6.1-source-release.zip.sha1`
+  * `wget https://dist.apache.org/repos/dist/dev/nifi/nifi-0.6.1/nifi-0.6.1-source-release.zip.sha256`
 
 1. Verify the signature
 
@@ -32,9 +32,9 @@ These steps are adapted from the release verification helper emails accompanying
 1. Verify the hashes (`md5`, `sha1`, `sha256`) match the source and what was provided
 in the vote email thread
 
-* `md5sum nifi-0.6.1-source-release.zip`
-* `sha1sum nifi-0.6.1-source-release.zip`
-* `openssl sha256 nifi-0.6.1-source-release.zip`
+  * `md5sum nifi-0.6.1-source-release.zip`
+  * `sha1sum nifi-0.6.1-source-release.zip`
+  * `openssl sha256 nifi-0.6.1-source-release.zip`
 
 1. Unzip nifi-0.6.1-source-release.zip
 
