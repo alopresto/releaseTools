@@ -2,12 +2,15 @@ package org.apache
 
 import com.beust.jcommander.JCommander
 import com.beust.jcommander.Parameter
+import groovy.io.GroovyPrintStream
 import org.apache.commons.io.FileUtils
 import org.apache.log4j.Logger
+import org.apache.maven.shared.invoker.*
 import org.apache.validator.NiFiVersionValidator
 import org.apache.validator.PathValidator
 import org.bouncycastle.util.encoders.Hex
 
+import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 
 class NiFiReleaseVerifier {
@@ -100,10 +103,6 @@ class NiFiReleaseVerifier {
         MessageDigest.isEqual(calculatedChecksum, Hex.decode(checksum))
     }
 
-    private boolean verifyContribCheck() {
-
-    }
-
     protected void parseCommandLineArgs(String[] args) {
         // JCommander
         logger.debug("Using JCommander to parse ${args.length} args: [${(args as List).join(", ")}]")
@@ -194,8 +193,62 @@ class NiFiReleaseVerifier {
         verifyReleaseGPGSignatures()
         verifyChecksums()
         unzipSource()
-        runContribCheck()
+        verifyContribCheck()
         verifyApacheArtifacts()
+    }
+
+    protected boolean verifyContribCheck() {
+
+    }
+
+    private int runMavenCommand(String pomPath = getSourcePomFile().path, Map<String, List<String>> options = [:]) {
+        InvocationRequest request = new DefaultInvocationRequest()
+        request.setPomFile(formFileFromPath(pomPath))
+
+        // TODO: Read from options map
+
+        // Equivalent to "mvn clean install -Pcontrib-check
+        request.setGoals(["clean", "install"])
+        request.setProfiles(["contrib-check"])
+//        request.setThreads("2.0C")
+
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream()
+        GroovyPrintStream printStream = new GroovyPrintStream(outputStream, true)
+        InvocationOutputHandler outputHandler = new PrintStreamHandler(printStream, true)
+
+        Invoker invoker = new DefaultInvoker()
+        invoker.setOutputHandler(outputHandler)
+        invoker.setMavenHome(getMavenHome())
+        InvocationResult result = invoker.execute(request)
+
+        logger.debug("\n" + new String(outputStream.toByteArray(), StandardCharsets.UTF_8))
+
+        int exitStatus = result.getExitCode()
+        if (exitStatus != 0) {
+            logger.error("Build exited with status ${exitStatus}")
+            logger.error("Exception: ${result.executionException}")
+            // TODO: Parse the results of the rat file & checkstyle
+            throw new IllegalStateException("Build with contrib-check failed")
+        }
+
+        exitStatus
+    }
+
+    private static File getMavenHome() {
+//        StringBuffer outputStream = new StringBuffer()
+//        runSystemCommand("which mvn", "", outputStream)
+//        logger.info("Output stream: ${outputStream.readLines().join("")}")
+//        new File(outputStream.readLines().join(), "../../")
+
+        new File(System.getenv("M3_HOME"))
+    }
+
+    private File getSourcePomFile() {
+        new File(getSourceDirPath(), "pom.xml")
+    }
+
+    private String getSourceDirPath() {
+        "${workBasePath}/nifi-${version}"
     }
 
     protected void unzipSource() {

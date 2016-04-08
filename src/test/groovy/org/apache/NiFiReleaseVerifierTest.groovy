@@ -604,6 +604,38 @@ class NiFiReleaseVerifierTest extends GroovyTestCase {
         assert msg =~ "Error unzipping source file ${workDirZipFile.path}"
     }
 
+    @Test
+    void testShouldVerifyContribCheck() {
+        // Arrange
+        String mvnSubProjectPath = RESOURCES_PATH + "/testContribCheckProject"
+        File pomFile = new File(mvnSubProjectPath, "pom.xml")
+        logger.info("Pom path: ${pomFile.path}")
+
+        // Act
+        int exitStatus = verifier.runMavenCommand(pomFile.path)
+
+        // Assert
+        logger.info("Mvn contrib check passed: ${exitStatus == 0}")
+        assert exitStatus == 0
+    }
+
+    @Test
+    void testVerifyContribCheckShouldHandleFailures() {
+        // Arrange
+        String mvnSubProjectPath = RESOURCES_PATH + "/testFailingContribCheckProject"
+        File pomFile = new File(mvnSubProjectPath, "pom.xml")
+        logger.info("Pom path: ${pomFile.path}")
+
+        // Act
+        def msg = shouldFail(IllegalStateException) {
+            int exitStatus = verifier.runMavenCommand(pomFile.path)
+        }
+
+        // Assert
+        logger.expected(msg)
+        assert msg =~ "Build with contrib-check failed"
+    }
+
     private static void removeTestKey() {
         // Specifies the fingerprint of the test key from the resource file to delete
         def deleteCommandPrefixes = ["gpg --batch --delete-secret-keys ", "gpg --batch --delete-keys "]
