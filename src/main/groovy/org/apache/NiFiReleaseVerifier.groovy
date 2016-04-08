@@ -197,8 +197,56 @@ class NiFiReleaseVerifier {
         verifyApacheArtifacts()
     }
 
-    protected boolean verifyContribCheck() {
+    protected boolean verifyApacheArtifacts(String sourceDirPath = getSourceDirPath(), Map<String, List<String>> files = generateRepresentativeStrings()) {
+        // Ensure the required files are present and contain representative language
+        def eachFile = files.collectEntries { String filePath, List<String> representativeStrings ->
+            File file = new File(sourceDirPath, filePath)
+            if (!file.exists()) {
+                logger.error("Required file missing: ${file.path}")
+                return [filePath, [false]]
+            }
 
+            final String text = file.text
+            logger.debug("Content (${file.name}): ${text}")
+            def containsLines = representativeStrings.collect { String line ->
+                boolean contains = text.contains(line)
+                logger.debug("Testing (${file.name}) for \"${line}\": ${contains}")
+                contains
+            }
+            logger.debug("Contains lines: ${containsLines}")
+
+            [filePath, containsLines]
+        }
+        logger.debug("Each file: ${eachFile}")
+
+        eachFile.every { fp, contains -> contains.every() }
+    }
+
+    private LinkedHashMap<String, ArrayList<String>> generateRepresentativeStrings() {
+        Map<String, List<String>> files = [
+                "README.md": ["Apache NiFi is an easy to use, powerful, and reliable system to process and distribute data.",
+                              "It supports highly configurable directed graphs of data routing, transformation, and system mediation logic.",
+                              "You may obtain a copy of the License at\n" +
+                                      "\n" +
+                                      "  http://www.apache.org/licenses/LICENSE-2.0",
+                              "This distribution includes cryptographic software. The country in which you \n" +
+                                      "currently reside may have restrictions on the import, possession, use, and/or\n" +
+                                      "re-export to another country, of encryption software."],
+                "LICENSE"  : ["Apache License\n" +
+                                      "                           Version 2.0, January 2004\n" +
+                                      "                        http://www.apache.org/licenses/",
+                              "Grant of Patent License. Subject to the terms and conditions of\n" +
+                                      "      this License, each Contributor hereby grants to You a perpetual,\n" +
+                                      "      worldwide, non-exclusive, no-charge, royalty-free, irrevocable\n" +
+                                      "      (except as stated in this section) patent license"],
+                "NOTICE"   : ["Apache NiFi\n" +
+                                      "Copyright 2014-2016 The Apache Software Foundation"]
+        ]
+        files
+    }
+
+    protected boolean verifyContribCheck() {
+        runMavenCommand() == 0
     }
 
     private int runMavenCommand(String pomPath = getSourcePomFile().path, Map<String, List<String>> options = [:]) {
@@ -235,11 +283,6 @@ class NiFiReleaseVerifier {
     }
 
     private static File getMavenHome() {
-//        StringBuffer outputStream = new StringBuffer()
-//        runSystemCommand("which mvn", "", outputStream)
-//        logger.info("Output stream: ${outputStream.readLines().join("")}")
-//        new File(outputStream.readLines().join(), "../../")
-
         new File(System.getenv("M3_HOME"))
     }
 

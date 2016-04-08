@@ -636,6 +636,71 @@ class NiFiReleaseVerifierTest extends GroovyTestCase {
         assert msg =~ "Build with contrib-check failed"
     }
 
+    @Test
+    void testShouldVerifyApacheArtifacts() {
+        // Arrange
+        File plainFile = new File(RESOURCES_PATH, "plain.txt")
+        String plainFilePath = plainFile.path
+        logger.info("Plain file path: ${plainFilePath}")
+        logger.info("File contents: ${plainFile.text}")
+
+        // Keep words of even length
+        def allWords = plainFile.text.split(/\s/)
+        def keywords = allWords.findAll { it.size() % 2 == 0 }
+
+        def expectedFileAndWords = [(plainFile.name): keywords]
+        logger.info("Files and expected words: ${expectedFileAndWords}")
+
+        // Act
+        boolean existsAndContainsWords = verifier.verifyApacheArtifacts(plainFile.toPath().parent.toString(), expectedFileAndWords)
+
+        // Assert
+        logger.info("Exists and contains words: ${existsAndContainsWords}")
+        assert existsAndContainsWords
+    }
+
+    @Test
+    void testVerifyApacheArtifactsShouldHandleMissingFile() {
+        // Arrange
+        File plainFile = new File(RESOURCES_PATH, "missing.txt")
+        String plainFilePath = plainFile.path
+        logger.info("Plain file path: ${plainFilePath}")
+        logger.info("File contents: ${plainFile.exists() ? plainFile.text : ""}")
+
+        def expectedFileAndWords = [(plainFile.name): ["any", "word", "here"]]
+        logger.info("Files and expected words: ${expectedFileAndWords}")
+
+        // Act
+        boolean existsAndContainsWords = verifier.verifyApacheArtifacts(plainFile.toPath().parent.toString(), expectedFileAndWords)
+
+        // Assert
+        logger.info("Exists and contains words: ${existsAndContainsWords}")
+        assert !existsAndContainsWords
+    }
+
+    @Test
+    void testVerifyApacheArtifactsShouldHandleMissingLines() {
+        // Arrange
+        File plainFile = new File(RESOURCES_PATH, "plain.txt")
+        String plainFilePath = plainFile.path
+        logger.info("Plain file path: ${plainFilePath}")
+        logger.info("File contents: ${plainFile.text}")
+
+        // Keep words of even length
+        def allWords = plainFile.text.split(/\s/)
+        def keywords = allWords.findAll { it.size() % 2 == 0 }
+
+        def expectedFileAndWords = [(plainFile.name): keywords*.reverse()]
+        logger.info("Files and expected words: ${expectedFileAndWords}")
+
+        // Act
+        boolean existsAndContainsWords = verifier.verifyApacheArtifacts(plainFile.toPath().parent.toString(), expectedFileAndWords)
+
+        // Assert
+        logger.info("Exists and contains words: ${existsAndContainsWords}")
+        assert !existsAndContainsWords
+    }
+
     private static void removeTestKey() {
         // Specifies the fingerprint of the test key from the resource file to delete
         def deleteCommandPrefixes = ["gpg --batch --delete-secret-keys ", "gpg --batch --delete-keys "]
