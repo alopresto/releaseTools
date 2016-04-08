@@ -76,19 +76,12 @@ class NiFiReleaseVerifier {
         final String GPG_VERIFY_CMD = "gpg --verify ${signatureFile.path} ${targetFile.path}"
         logger.debug("GPG verify command: ${GPG_VERIFY_CMD}")
 
-        def proc = GPG_VERIFY_CMD.execute()
-        def outputStream = new StringBuffer();
-        def errorStream = new StringBuffer();
-        proc.waitForProcessOutput(outputStream, errorStream)
-
-        def errorLines = errorStream.readLines()
-        logger.debug(errorLines.join("\n"))
-
-        if (containsTrustWarning(errorLines)) {
-            logger.warn(errorLines.join("\n"))
+        try {
+            int exitValue = runSystemCommand(GPG_VERIFY_CMD, "Error verifying GPG signature")
+            return exitValue == 0
+        } catch (Exception e) {
+            return false
         }
-
-        return proc.exitValue() == 0
     }
 
     private static boolean containsTrustWarning(List<String> strings) {
@@ -209,21 +202,27 @@ class NiFiReleaseVerifier {
         final String UNZIP_CMD = "unzip -q ${releaseArtifact} -d ${workBasePath}"
         logger.debug("Unzip command: ${UNZIP_CMD}")
 
-        def proc = UNZIP_CMD.execute()
-        def outputStream = new StringBuffer();
-        def errorStream = new StringBuffer();
-        proc.waitForProcessOutput(outputStream, errorStream)
+        runSystemCommand(UNZIP_CMD, "Error unzipping source file ${releaseArtifact}")
+    }
 
-//        def outputLines = outputStream.readLines()
-//        logger.debug(outputLines.join("\n"))
+    private
+    static int runSystemCommand(String command, String errorMessage = "Exception executing command: ${command}", StringBuffer output = new StringBuffer(), StringBuffer error = new StringBuffer()) {
+        logger.debug("Executing system command: ${command}")
 
-        def errorLines = errorStream.readLines()
-//        logger.debug(errorLines.join("\n"))
+        // TODO: Sanitize/whitelist commands
+        def proc = command.execute()
+        proc.waitForProcessOutput(output, error)
 
-        if (proc.exitValue() != 0) {
+        def errorLines = error.readLines()
+
+        int exitValue = proc.exitValue()
+        if (exitValue != 0) {
+            logger.error(errorMessage)
             logger.error(errorLines.join("\n"))
-            throw new Exception("Error unzipping source file ${releaseArtifact}")
+            throw new Exception(errorMessage)
         }
+
+        exitValue
     }
 
     protected void verifyChecksums() {
@@ -250,15 +249,12 @@ class NiFiReleaseVerifier {
         final String GPG_IMPORT_CMD = "gpg --import ${generatePath(KEYS_PATH)}"
         logger.debug("GPG import command: ${GPG_IMPORT_CMD}")
 
-        def proc = GPG_IMPORT_CMD.execute()
-        def outputStream = new StringBuffer();
-        def errorStream = new StringBuffer();
-        proc.waitForProcessOutput(outputStream, errorStream)
+        StringBuffer outputStream = new StringBuffer()
+        StringBuffer errorStream = new StringBuffer()
 
-        def errorLines = errorStream.readLines()
-        logger.debug(errorLines.join("\n"))
+        runSystemCommand(GPG_IMPORT_CMD, "Error importing signing keys", outputStream, errorStream)
 
-        def keyCounts = parseProcessedKeysCount(errorLines)
+        def keyCounts = parseProcessedKeysCount(errorStream.readLines())
         logger.info("Key counts: ${keyCounts}")
 
         keyCounts["imported"] ?: 0
@@ -323,4 +319,5 @@ class NiFiReleaseVerifier {
             throw new MissingMethodException(name, this.class, args)
         }
     }
+
 }
