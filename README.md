@@ -24,20 +24,20 @@ These steps are adapted from the release verification helper emails accompanying
 * `wget https://dist.apache.org/repos/dist/dev/nifi/nifi-0.6.1/nifi-0.6.1-source-release.zip.sha256`
 
 1. Verify the signature
- `gpg --verify nifi-0.6.1-source-release.zip.asc`
+  `gpg --verify nifi-0.6.1-source-release.zip.asc`
 
-1. Verify the hashes (md5, sha1) match the source and what was provided
+1. Verify the hashes (`md5`, `sha1`, `sha256`) match the source and what was provided
 in the vote email thread
- * `md5sum nifi-0.6.1-source-release.zip`
- * `sha1sum nifi-0.6.1-source-release.zip`
- * `openssl sha256 nifi-0.6.1-source-release.zip`
+* `md5sum nifi-0.6.1-source-release.zip`
+* `sha1sum nifi-0.6.1-source-release.zip`
+* `openssl sha256 nifi-0.6.1-source-release.zip`
 
 1. Unzip nifi-0.6.1-source-release.zip
   `unzip -q nifi-0.6.1-source-release.zip`
 
 1. Verify the build works including release audit tool (RAT) checks
- `cd nifi-0.6.1`
- `mvn clean install -Pcontrib-check`
+  `cd nifi-0.6.1`
+  `mvn clean install -Pcontrib-check`
 
 1. Verify the contents contain a good `README.md`, `NOTICE`, and `LICENSE`.
   _Here the code checks the existence of each file and looks for hard-coded representative strings (long enough that the random occurrence is highly unlikely). This does not compare to a reference implementation of each file because the files change dynamically with each release._
@@ -53,4 +53,6 @@ in the vote email thread
   
 1. Make sure the README, NOTICE, and LICENSE are present and correct
   _Not yet implemented_
-# Run the resulting convenience binary and make sure it works as expected
+  
+1. Run the resulting convenience binary and make sure it works as expected
+  _Not yet implemented_
