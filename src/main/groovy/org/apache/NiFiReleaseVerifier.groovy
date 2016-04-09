@@ -6,6 +6,7 @@ import groovy.io.GroovyPrintStream
 import org.apache.commons.io.FileUtils
 import org.apache.log4j.Logger
 import org.apache.maven.shared.invoker.*
+import org.apache.validator.GitCommitValidator
 import org.apache.validator.NiFiVersionValidator
 import org.apache.validator.PathValidator
 import org.bouncycastle.util.encoders.Hex
@@ -17,8 +18,13 @@ class NiFiReleaseVerifier {
 
     private static final Logger logger = Logger.getLogger(NiFiReleaseVerifier.class)
 
+    private String userHome = System.getProperty("user.home")
+
     @Parameter(names = ["--release", "-r"], description = "Version to verify (e.g. 0.6.0)", required = true, validateWith = NiFiVersionValidator.class)
     private String version
+
+    @Parameter(names = ["--release-candidate", "-r"], description = "Release candidate to verify (e.g. RC1)", validateWith = NiFiVersionValidator.class)
+    private String rc = "RC1"
 
     @Parameter(names = ["--verbose", "-v"], description = "Enables verbose output (default false)", required = false, arity = 0)
     private boolean verbose = false
@@ -26,17 +32,22 @@ class NiFiReleaseVerifier {
     @Parameter(names = ["--path", "-p"], description = "Base path to work (e.g. ~/scratch, will be created if it does not exist)", validateWith = PathValidator.class)
     private String workBasePath = "~/Workspace/scratch/release_verification"
 
+    @Parameter(names = ["--nifi", "-n"], description = "Path to NiFi code base (git root) (e.g. ~/Workspace/nifi)", required = true, validateWith = PathValidator.class)
+    private String nifiGitPath = "${userHome}/Workspace/nifi"
+
+    @Parameter(names = ["--commit"], description = "Expected git commit ID", required = true, validateWith = GitCommitValidator.class)
+    private String commitId
     private String releaseArtifact
     private String releaseSignature
+
     private List<String> releaseChecksums = []
-
     private static final String BASE_URL = "https://dist.apache.org/repos/dist/dev/nifi/nifi-"
-    private static final List<String> DEFAULT_SIGNATURE_EXTENSIONS = ["asc", "md5", "sha1", "sha256"]
 
+    private static final List<String> DEFAULT_SIGNATURE_EXTENSIONS = ["asc", "md5", "sha1", "sha256"]
     private static final String KEYS_URL = "https://dist.apache.org/repos/dist/dev/nifi/KEYS"
-    private static final String KEYS_PATH = "KEYS"
 
     // This is to allow tests to intercept the instance
+    private static final String KEYS_PATH = "KEYS"
     private static NiFiReleaseVerifier verifier
 
     protected boolean verifyReleaseGPGSignatures() {
@@ -178,6 +189,10 @@ class NiFiReleaseVerifier {
         releaseFiles.collect { it.tokenize("/").last() }
     }
 
+    protected String getTagName() {
+        rc ? "${version}-${rc}" : version
+    }
+
     public void verifyRelease() {
         if (!setupWorkPath()) {
             throw new Exception("Unable to setup the work base path: ${workBasePath}")
@@ -194,7 +209,40 @@ class NiFiReleaseVerifier {
         verifyChecksums()
         unzipSource()
         verifyContribCheck()
+
+        // Verify for source release
         verifyApacheArtifacts()
+        verifyGitCommitId()
+//        verifyRCBranchGitCommitId()
+        verifyReleaseBinariesExist()
+
+        // Verify for convenience binary
+        verifyApacheArtifacts(getReleaseBinaryPath())
+//
+//        verifyConvenienceBinaryRuns()
+    }
+
+    protected String getReleaseBinaryPath() {
+        new File(getSourceDirPath() + "/nifi-assembly/target", "nifi-${version}-bin/nifi-${version}").path
+    }
+
+    protected boolean verifyReleaseBinariesExist(List<String> binaryExtensions = ["zip", "tar.gz"]) {
+        binaryExtensions.every { String extension ->
+            File file = new File(getSourceDirPath() + "/nifi-assembly/target", "nifi-${version}-bin.${extension}")
+            logger.debug("Checking existence of ${file.path}: ${file.exists()}")
+
+            file.exists()
+        }
+    }
+
+    protected boolean verifyGitCommitId() {
+        final String VERIFY_GIT_CMD = "git -C ${nifiGitPath} rev-list -n 1 ${getTagName()}"
+        logger.debug("Git verify command: ${VERIFY_GIT_CMD}")
+
+        StringBuffer outputBuffer = new StringBuffer()
+        runSystemCommand(VERIFY_GIT_CMD, "Exception verifying git commit IDs", outputBuffer)
+
+        commitId == outputBuffer.toString().trim()
     }
 
     protected boolean verifyApacheArtifacts(String sourceDirPath = getSourceDirPath(), Map<String, List<String>> files = generateRepresentativeStrings()) {
@@ -222,7 +270,7 @@ class NiFiReleaseVerifier {
         eachFile.every { fp, contains -> contains.every() }
     }
 
-    private LinkedHashMap<String, ArrayList<String>> generateRepresentativeStrings() {
+    private static LinkedHashMap<String, ArrayList<String>> generateRepresentativeStrings() {
         Map<String, List<String>> files = [
                 "README.md": ["Apache NiFi is an easy to use, powerful, and reliable system to process and distribute data.",
                               "It supports highly configurable directed graphs of data routing, transformation, and system mediation logic.",

@@ -715,6 +715,140 @@ class NiFiReleaseVerifierTest extends GroovyTestCase {
         assert !existsAndContainsWords
     }
 
+    @Test
+    void testShouldVerifyGitCommitId() {
+        // Arrange
+        File nifiGitHome = new File("/Users/alopresto/Workspace/nifi")
+        String nifiGitPath = nifiGitHome.path
+        logger.info("NiFi git path: ${nifiGitPath}")
+
+        // Get the most recent git commit (tags may change, so use master for tests)
+        final String EXPECTED_GIT_CMD = "git -C ${nifiGitPath} rev-list -n 1 master"
+        logger.info("Expected git command: ${EXPECTED_GIT_CMD}")
+        StringBuffer output = new StringBuffer()
+        StringBuffer error = new StringBuffer()
+
+        def proc = EXPECTED_GIT_CMD.execute()
+        proc.waitForProcessOutput(output, error)
+
+//        logger.output(output)
+//        logger.errors(error)
+//        logger.exit(proc.exitValue())
+
+        final String EXPECTED_COMMIT = output.toString().trim()
+        logger.info("Expected commit ID: ${EXPECTED_COMMIT}")
+
+        verifier.commitId = EXPECTED_COMMIT
+        verifier.rc = null
+        verifier.version = "master"
+
+        // Act
+        boolean commitIdsMatch = verifier.verifyGitCommitId()
+
+        // Assert
+        logger.info("Commit IDs match: ${commitIdsMatch}")
+        assert commitIdsMatch
+    }
+
+    @Test
+    void testVerifyGitCommitIdShouldHandleFailure() {
+        // Arrange
+        File nifiGitHome = new File("/Users/alopresto/Workspace/nifi")
+        String nifiGitPath = nifiGitHome.path
+        logger.info("NiFi git path: ${nifiGitPath}")
+
+        // Get the most recent git commit (tags may change, so use master for tests)
+        final String EXPECTED_GIT_CMD = "git -C ${nifiGitPath} rev-list -n 1 master"
+        logger.info("Expected git command: ${EXPECTED_GIT_CMD}")
+        StringBuffer output = new StringBuffer()
+        StringBuffer error = new StringBuffer()
+
+        def proc = EXPECTED_GIT_CMD.execute()
+        proc.waitForProcessOutput(output, error)
+
+//        logger.output(output)
+//        logger.errors(error)
+//        logger.exit(proc.exitValue())
+
+        final String EXPECTED_COMMIT = output.toString().trim().reverse()
+        logger.reversed("Expected commit ID: ${EXPECTED_COMMIT}")
+
+        verifier.commitId = EXPECTED_COMMIT
+        verifier.rc = null
+        verifier.version = "master"
+
+        // Act
+        boolean commitIdsMatch = verifier.verifyGitCommitId()
+
+        // Assert
+        logger.info("Commit IDs match: ${commitIdsMatch}")
+        assert !commitIdsMatch
+    }
+
+    @Test
+    void testShouldVerifyReleaseBinariesExist() {
+        // Arrange
+        final String VERSION = "0.6.1"
+
+        String parent = DOWNLOAD_PARENT_DIR_PATH
+        logger.debug("Target path: ${parent}")
+        File parentDir = makeDownloadDir(parent)
+        File targetDir = new File(parentDir.path, "/nifi-${VERSION}/nifi-assembly/target")
+        targetDir.mkdirs()
+
+
+        verifier.version = VERSION
+        verifier.workBasePath = parentDir.path
+
+        def binaryExtensions = ["zip", "tar.gz"]
+        binaryExtensions.each { String extension ->
+            File file = new File(targetDir.path, "nifi-${VERSION}-bin.${extension}")
+            file.write("Test resource file")
+            logger.info("Created file ${file.path}")
+
+            assert file.exists()
+        }
+
+        // Act
+        boolean releaseBinariesExist = verifier.verifyReleaseBinariesExist()
+
+        // Assert
+        logger.info("Release binaries exist: ${releaseBinariesExist}")
+        assert releaseBinariesExist
+    }
+
+    @Test
+    void testVerifyReleaseBinariesExistShouldHandleMissingFile() {
+        // Arrange
+        final String VERSION = "0.6.1"
+
+        String parent = DOWNLOAD_PARENT_DIR_PATH
+        logger.debug("Target path: ${parent}")
+        File parentDir = makeDownloadDir(parent)
+        File targetDir = new File(parentDir.path, "/nifi-${VERSION}/nifi-assembly/target")
+        targetDir.mkdirs()
+
+
+        verifier.version = VERSION
+        verifier.workBasePath = parentDir.path
+
+        def binaryExtensions = ["zip", "tar.gz"]
+        binaryExtensions.each { String extension ->
+            File file = new File(targetDir.path, "nifi-${VERSION}-bin.${extension}")
+            file.delete()
+            logger.info("Deleted file ${file.path}")
+
+            assert !file.exists()
+        }
+
+        // Act
+        boolean releaseBinariesExist = verifier.verifyReleaseBinariesExist()
+
+        // Assert
+        logger.info("Release binaries exist: ${releaseBinariesExist}")
+        assert !releaseBinariesExist
+    }
+
     private static void removeTestKey() {
         // Specifies the fingerprint of the test key from the resource file to delete
         def deleteCommandPrefixes = ["gpg --batch --delete-secret-keys ", "gpg --batch --delete-keys "]
